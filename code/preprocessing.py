@@ -4,7 +4,7 @@ import os as os
 import re
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PATH = os.path.join(BASE_DIR, '..', 'data', 'raw-data')
+PATH = os.path.join(BASE_DIR, 'data', 'raw-data')
 
 csvs = ['US1ILAD0005.csv', 'USC00110072.csv', 'USC00110338.csv', 'USC00111329.csv',
         'USC00111577.csv', 'USC00114489.csv', 'USC00114629.csv', 'USC00115097.csv',
@@ -175,5 +175,155 @@ master_df = master_df[col_keep]
 
 master_df = master_df[master_df['DATE'] >= '2015-01-01']
 
-output_path = os.path.join('..', 'data', 'derived-data', 'all_weather.csv')
-master_df.to_csv(output_path, index=False)
+output_path = os.path.join('data', 'derived-data', 'all_weather2.csv')
+#master_df.to_csv(output_path, index=False)
+
+
+import pandas as pd
+import numpy as np
+import os as os
+import geopandas as gpd
+from shapely.geometry import Point
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+PATH = os.path.join('data', 'derived-data')
+RAW_PATH = os.path.join('data', 'raw-data')
+temp_path = os.path.join(PATH, 'all_weather.csv')
+aqi_path = os.path.join(PATH, 'aqi_all.csv')
+temp_narrow = pd.read_csv(temp_path)
+aqi_df = pd.read_csv(aqi_path)
+
+# Convert lat/lon to geometry points
+geometry = [Point(xy) for xy in zip(temp_narrow['LONGITUDE'], temp_narrow['LATITUDE'])]
+temp_gdf = gpd.GeoDataFrame(temp_narrow, geometry=geometry)
+
+# Make sure you set a CRS (coordinate reference system)
+# Most lat/lon data is EPSG:4326
+temp_gdf.set_crs(epsg=4326, inplace=True)
+
+# Replace with the path to your county shapefile
+counties_path = os.path.join(RAW_PATH, 'tl_2025_us_county')
+counties = gpd.read_file(counties_path)
+
+# Make sure the counties GeoDataFrame is in the same CRS
+counties = counties.to_crs(temp_gdf.crs)
+
+# Perform spatial join
+temp_with_county = gpd.sjoin(
+    temp_gdf,
+    counties[['COUNTYFP', 'geometry']],  # keep only county_fp and geometry for spatial join
+    how="left",
+    predicate="intersects"
+)
+
+# ---------------------------
+# Step 1: Map county names to COUNTYFP for Illinois
+# Only include the counties present in temp_with_county
+county_to_fp = {
+    "Adams": "001",
+    "Champaign": "019",
+    "Clark": "023",
+    "Cook": "031",
+    "DuPage": "043",
+    "Jo Daviess": "085",
+    "Kane": "089",
+    "McHenry": "111",
+    "McLean": "113",
+    "Macon": "115",
+    "Mercer": "131",
+    "Peoria": "143",
+    "Randolph": "157",
+    "Rock Island": "161",
+    "Sangamon": "167",
+    "Winnebago": "201",
+}
+
+# Clean 'county Name' to match mapping (strip ' County' if present)
+aqi_df['county Name'] = aqi_df['county Name'].str.replace(" County$", "", regex=True)
+
+# Create COUNTYFP column in AQI df
+aqi_df['COUNTYFP'] = aqi_df['county Name'].map(county_to_fp)
+
+# Optional: check for unmatched counties
+missing = aqi_df[aqi_df['COUNTYFP'].isna()]['county Name'].unique()
+if len(missing) > 0:
+    print("Warning: These AQI counties did not map to COUNTYFP:", missing)
+
+# ---------------------------
+# Step 2: Restrict AQI df to counties present in temperature data
+temp_counties = temp_with_county['COUNTYFP'].unique()
+aqi_df_restricted = aqi_df[aqi_df['COUNTYFP'].isin(temp_counties)].copy()
+
+# ---------------------------
+# Step 3: Standardize date columns
+# Make sure temp_with_county['DATE'] and aqi_df_restricted['Date'] are datetime
+temp_with_county['DATE'] = pd.to_datetime(temp_with_county['DATE'])
+aqi_df_restricted['Date'] = pd.to_datetime(aqi_df_restricted['Date'])
+
+# ---------------------------
+# Step 4: Merge on Date and COUNTYFP
+merged_df = pd.merge(
+    temp_with_county,
+    aqi_df_restricted,
+    left_on=['DATE', 'COUNTYFP'],
+    right_on=['Date', 'COUNTYFP'],
+    how='inner'  # use 'left' if you want all temperature stations even if AQI missing
+)
+
+# ---------------------------
+# Step 5: (Optional) drop redundant columns
+merged_df = merged_df.drop(columns=['Date'])  # Keep only one date column if desired
+
+print("Merged DataFrame shape:", merged_df.shape)
+print("Columns:", merged_df.columns.tolist())
+
+import pandas as pd
+import geopandas as gpd
+import numpy as np
+
+# ---------------------------
+# Step 1: Make sure merged_df is ready
+# Columns needed: ['COUNTYFP', 'DATE', 'tavg_calc', 'AQI']
+# Dates as datetime
+merged_df['DATE'] = pd.to_datetime(merged_df['DATE'])
+
+# ---------------------------
+# Step 2: Define seasons
+def get_season(month):
+    if month in [12, 1, 2]:
+        return 'Winter'
+    elif month in [3, 4, 5]:
+        return 'Spring'
+    elif month in [6, 7, 8]:
+        return 'Summer'
+    else:
+        return 'Fall'
+
+merged_df['Season'] = merged_df['DATE'].dt.month.apply(get_season)
+
+# ---------------------------
+# Step 3: Calculate correlation by county with season fixed effects
+# We'll use groupby on COUNTYFP and Season to detrend by season
+county_list = merged_df['COUNTYFP'].unique()
+
+results = []
+
+for (county, season), group in merged_df.groupby(['COUNTYFP', 'Season']):
+    
+    if len(group) > 1 and group['tavg_calc'].std() > 0 and group['AQI'].std() > 0:
+        corr = group['tavg_calc'].corr(group['AQI'])
+    else:
+        corr = np.nan
+        
+    results.append({
+        'COUNTYFP': county,
+        'Season': season,
+        'temp_aqi_corr': corr
+    })
+
+corr_df = pd.DataFrame(results)
+
+corr_df
+
+output_path2 = os.path.join('data', 'derived-data', 'streamlit_data.csv')
+corr_df.to_csv(output_path2, index=False)

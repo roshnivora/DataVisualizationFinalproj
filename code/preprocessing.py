@@ -175,8 +175,8 @@ master_df = master_df[col_keep]
 
 master_df = master_df[master_df['DATE'] >= '2015-01-01']
 
-output_path = os.path.join('data', 'derived-data', 'all_weather2.csv')
-#master_df.to_csv(output_path, index=False)
+output_path = os.path.join('data', 'derived-data', 'all_weather.csv')
+master_df.to_csv(output_path, index=False)
 
 
 import pandas as pd

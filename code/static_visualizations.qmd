@@ -12,11 +12,8 @@ import numpy as np
 import os
 ```
 ```{python}
-BASE_DIR = os.getcwd()
-aqi_all = pd.read_csv(os.path.join(BASE_DIR, 'derived-data', 'aqi_all.csv'))
-#redo this because the grader will be opening the qmd in the remote repository and the file path will be different
-#needs to work by running inside repo
-#
+BASE_DIR = os.path.dirname(os.path.abspath('__file__'))
+aqi_all = pd.read_csv(os.path.join(BASE_DIR, '..', 'data', 'derived-data', 'aqi_all.csv'))
 print(aqi_all.head())
 aqi_all['Date'] = pd.to_datetime(aqi_all['Date'])
 ```
@@ -118,10 +115,8 @@ cook_monthly = (
 )
 cook_monthly["Place"] = "Cook County"
 
-# --- Combine ---
 combined = pd.concat([illinois_monthly, cook_monthly], ignore_index=True)
 
-# --- One chart ---
 aqi_both = alt.Chart(combined).mark_line().encode(
     x=alt.X("YearMonth:T", title="Year",
             axis=alt.Axis(format="%Y", tickCount="year", labelAngle=0)),
@@ -161,7 +156,6 @@ month_order = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov"
 month_map = {i+1: m for i, m in enumerate(month_order)}
 cook_daily["month_name"] = cook_daily["month"].map(month_map)
 
-# ---- Build full calendar grid ----
 years = sorted(cook_daily["year"].unique())
 
 grid = (
@@ -222,7 +216,8 @@ calendar_heatmap
 
 ```{python}
 #reading in temperature data 
-temp = pd.read_csv(os.path.join(BASE_DIR, 'derived-data', 'temperature.csv'))
+temp = pd.read_csv(os.path.join(BASE_DIR, '..', 'data', 'derived-data', 'temperature.csv'))
+
 
 ```
 
@@ -282,7 +277,8 @@ scatter
 
 ```{python}
 #importing virus data for city of chicago
-virus = pd.read_csv(os.path.join(BASE_DIR, 'derived-data', 'virus.csv'))
+virus = pd.read_csv(os.path.join(BASE_DIR, '..', 'data', 'derived-data', 'virus.csv'))
+
 virus['week_start'] = pd.to_datetime(virus['week_start'])
 
 #creating year and month columns for virus data

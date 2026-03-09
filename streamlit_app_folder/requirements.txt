@@ -3,5 +3,5 @@ pandas
 geopandas
 altair
 shapely
-fiona
+pyogrio
 pyproj

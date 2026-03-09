@@ -1,0 +1,185 @@
+---
+title: "Weather, Air Quality, and Asthma in Chicago"
+author: "Roshni Vora & Clara Leo"
+format:
+  html:
+    self-contained: true
+  pdf:
+    documentclass: article
+execute:
+  echo: false
+project:
+  execute-dir: project
+---
+Data Viz Final Project
+
+Clara Leo and Roshni Vora (Monday 10:30am lecture)
+
+Our research question is: What can the relationship between temperature, AQI, and respiratory virus concentration in wastewater tell us about the risks urban communities face due to climate change?
+
+In order to investigate this question, we examined three datasets. The first is the Global Historical Climatology Network GHCN-Daily dataset, which provides data on daily temperature at various weather stations around the country. The second is the City of Chicago Respiratory Virus Wastewater Surveillance dataset, which provides weekly data on the concentration of various respiratory viruses throughout Chicago. The third dataset is the Environmental Protection Agency’s Daily AQI Data, which provides daily AQI readings for multiple stations throughout Illinois. 
+
+Streamlit
+We created a Streamlit app that examines the responsiveness of AQI to changes in temperature. We did this by regressing AQI on temperature and representing the correlation coefficient for temperature and AQI on a choropleth map. The data wrangling for this process involved combining weather datasets from different counties into a single dataset, spatially enabling the latitude and longitude columns, and joining this dataframe with our AQI dataset. We then collapsed our data to the county and season level, and calculated a correlation coefficient for each county/season combination. 
+We then wrote code to build a Streamlit app. This code utilized the dataframe created in the paragraph above. We created two side-by-side dropdown menus that viewers can use to select which seasonal data to view on the map. The Streamlit then filters to the season indicated in the dropdown menu, joins the data to an Illinois county shapefile, colors the counties with data according to their correlation coefficient (and counties without data are colored gray), and uses this to build an Altair choropleth map, where red indicates high correlation and blue represents low correlation.
+We encountered some challenges while building this app. The first is that some of our data referred to counties by name, while other data referred to it using the county FIPS code. In order to deal with this issue, we created a dictionary that allowed us to harmonize the columns to exclusively use the county FIPS code. The second challenge arose from the fact that, while we had daily temperature data for most counties in Illinois, we only had daily AQI data for a limited set of Illinois counties. As a result, our map only represents measures for a handful of Illinois counties. Finally, when we initially created the Streamlit, it was adjusting the scale for the choropleth map to the data for the season being examined on the map, meaning that each map was being presented with a different scale, a stylistic aspect that severely compromised comparability across the maps. However, once this issue was fixed, the maps’ comparability was significantly improved. 
+Our Streamlit revealed a few notable insights. The first is that correlation between temperature and AQI seems to vary seasonally. It is interesting to note that the correlation is higher during transitional seasons (Spring and Fall) and lower in seasons with steadier temperatures (Summer and Winter). This may suggest that AQI is more volatile during times when temperature is variable. This relates to our question by suggesting that increases in temperature volatility lead to overall more unstable AQI. We can infer from this the possibility that temperature volatility introduced by climate change may have adverse effects on people’s health due to swings in AQI. The second insight is that for Cook County, Illinois’ most urban county, correlation between temperature and AQI is consistently high. This suggests that urban counties’ AQI may be more sensitive to changes in temperature than more rural or suburban counties. This insight relates to our research question because it suggests that as average temperatures rise, air quality in urban counties may be more sensitive to these temperature changes. As a result, it is possible that people living in urban communities are in some respects more vulnerable than others to the effects of climate change.
+
+```{python}
+#| echo: false
+import pandas as pd
+import altair as alt
+import numpy as np
+import os
+import os
+
+BASE_DIR = os.getcwd()
+aqi_all = pd.read_csv(os.path.join(BASE_DIR, 'data', 'derived-data', 'aqi_all.csv'))
+
+aqi_all['Date'] = pd.to_datetime(aqi_all['Date'])
+
+cook_daily = (
+    aqi_all.loc[aqi_all["county Name"] == "Cook", ["Date", "AQI"]]
+    .dropna()
+    .assign(date=lambda d: d["Date"].dt.floor("D"))
+    .groupby("date", as_index=False)["AQI"]
+    .mean()
+)
+
+temp = pd.read_csv(os.path.join(BASE_DIR, 'data', 'derived-data', 'temperature.csv'))
+
+temp_cook = temp[temp['NAME'] == 'CHICAGO MIDWAY AIRPORT 3 SW, IL US']
+temp_cook = temp_cook[["DATE", "tavg_calc", "NAME"]].dropna()
+temp_cook = temp_cook.rename(columns={"DATE": "date", "tavg_calc": "temp"})
+temp_cook["date"] = pd.to_datetime(temp_cook["date"])
+
+cook_daily_temp = cook_daily.merge(temp_cook[["date", "temp"]], on="date", how="inner")
+
+scatter = alt.Chart(cook_daily_temp).mark_circle(opacity=0.3).encode(
+    x=alt.X("temp:Q", title="Temperature (°F)"),
+    y=alt.Y("AQI:Q", title="AQI"),
+    tooltip=[
+        alt.Tooltip("date:T"),
+        alt.Tooltip("temp:Q", format=".1f"),
+        alt.Tooltip("AQI:Q", format=".1f")
+    ]
+).properties(
+    width=600,
+    height=400,
+    title="Cook County: Daily AQI vs Temperature"
+)
+
+scatter
+```
+
+Static plot 1
+The first chart I created is a scatter plot showing the relationship between daily temperature (F) and daily AQI in Cook County. To create this mark.circle scatter plot, I created a cook_daily data frame that contained the AQI of only Cook County. From the weather dataframe, I subsetted the weather average measurements from Midway Airport and merged the two dataframes together on date. This created a Cook County dataframe that contained each daily average temperature and AQI over the course of several years. Each circle point corresponds to the daily average temperature and the same day’s AQI (temperature(F), AQI)
+
+When temperatures are in middle ranges around 30F - 50F, AQI values are clustered around the same measurements showing consistent trends when there is little fluctuation in temperature. However, when temperature increases or decreases from the median, there begins to be more variability with AQI measurements. For example, when temperature increases above 70F-80F, the trend AQI measurements were followed start to scatter showing more variability when temperature increases. This could be due to many factors. For example, in June 2023, there were fires in Canada that lead to extremely high AQI temperature in the  Midwest that could be a potential reason for high variability in AQI when temperature increases. Another general factor of this trend could be that hot days are more likely to be associated with higher values of AQI. This relationship shows a nonlinear pattern where moderate temperature results in moderate AQI measures however when temperature stray from moderate - higher or lower - this leads to more variability with AQI measurements. This poses a threat for public  health during the summer months and winter months in urban regions like Chicago. This also shows how outside factors such as wildfires, although very far away, can affect urban regions. 
+ 
+
+
+```{python}
+#| echo: false
+virus = virus = pd.read_csv(os.path.join(BASE_DIR, 'data', 'derived-data', 'virus.csv'))
+virus['week_start'] = pd.to_datetime(virus['week_start'])
+virus['YearMonth'] = virus['week_start'].dt.to_period('M').dt.to_timestamp()
+
+virus_monthly = (
+    virus
+    .dropna(subset=["conc_toplot"])
+    .groupby(["YearMonth", "pathogen"], as_index=False)["conc_toplot"]
+    .mean()
+)
+
+cook_daily["YearMonth"] = cook_daily["date"].dt.to_period("M").dt.to_timestamp()
+aqi_monthly = cook_daily.groupby("YearMonth", as_index=False)["AQI"].mean()
+
+cook_daily_temp["YearMonth"] = cook_daily_temp["date"].dt.to_period("M").dt.to_timestamp()
+temp_monthly = cook_daily_temp.groupby("YearMonth", as_index=False)["temp"].mean()
+
+df_monthly = (
+    aqi_monthly
+    .merge(temp_monthly, on="YearMonth", how="inner")
+    .merge(virus_monthly, on="YearMonth", how="inner")
+)
+df_monthly["YearMonth"] = pd.to_datetime(df_monthly["YearMonth"])
+
+pathogens = sorted(df_monthly["pathogen"].dropna().unique().tolist())
+path_sel = alt.selection_point(
+    fields=["pathogen"],
+    bind=alt.binding_select(options=pathogens, name="Pathogen: "),
+    value=pathogens[0]
+)
+
+base = alt.Chart(df_monthly).add_params(path_sel).transform_filter(path_sel).encode(
+    x=alt.X("YearMonth:T", title="Year")
+)
+
+virus_line = base.mark_line().encode(
+    y=alt.Y("conc_toplot:Q", title="Virus concentration"),
+    color=alt.value("#1f77b4"),
+    strokeDash=alt.value([1, 0]),
+    tooltip=["YearMonth:T", "pathogen:N", alt.Tooltip("conc_toplot:Q", format=".2f")]
+)
+
+aqi_line = base.mark_line().encode(
+    y=alt.Y("AQI:Q", title="AQI"),
+    color=alt.value("#d62728"),
+    strokeDash=alt.value([6, 4]),
+    tooltip=["YearMonth:T", alt.Tooltip("AQI:Q", format=".1f")]
+)
+
+legend_data = alt.Chart(alt.InlineData(values=[
+    {"series": "Virus Concentration"},
+    {"series": "AQI"}
+])).mark_line().encode(
+    color=alt.Color("series:N",
+        scale=alt.Scale(
+            domain=["Virus Concentration", "AQI"],
+            range=["#1f77b4", "#d62728"]
+        ),
+        legend=alt.Legend(title="Metric")
+    ),
+    strokeDash=alt.StrokeDash("series:N",
+        scale=alt.Scale(
+            domain=["Virus Concentration", "AQI"],
+            range=[[1, 0], [6, 4]]
+        ),
+        legend=alt.Legend(title="Metric")
+    )
+).properties(width=0, height=0)
+
+title_chart = alt.Chart(df_monthly).add_params(path_sel).transform_filter(
+    path_sel
+).transform_aggregate(
+    pathogen="min(pathogen)"
+).mark_text(
+    align="center", baseline="bottom", fontSize=14, fontWeight="bold", dy=-10
+).encode(
+    x=alt.value(425),
+    y=alt.value(0),
+    text=alt.Text("pathogen:N", format="")
+).transform_calculate(
+    pathogen="'Monthly Virus Concentration (' + datum.pathogen + ') vs AQI'"
+)
+
+aqi_virus_chart = alt.layer(title_chart, virus_line, aqi_line, legend_data).resolve_scale(
+    y="independent",
+    color="independent",
+    strokeDash="independent"
+).properties(
+    width=850,
+    height=380,
+)
+
+aqi_virus_chart
+
+
+```
+
+Static plot 2
+
+The final chart I created is a drop down line chart showing the individual relationship between each pathogen found in the virus data from the City of Chicago and AQI data. For the data wrangling process and preprocessing steps to create the mark.line I first took the weekly virus data and created it into a monthly data frame which also corresponded to the monthly dataframes for temperature and AQI measurements for Cook County. I then merged the three dataframes together to create one large data frame that had aggregated monthly averages of virus concentration, temperature, and AQI for Chicago. 
+
+Taking a closer look at the chart we can see the monthly AQI against the four respiratory pathogens (Influenza A, Influenza B, RSV, and SARS-CoV 2) in Chicago. Although there does not seem to be a consistent trend, it does show that AQI and respiratory viruses have an inverse relationship, when AQI increases, mostly during summer months, respiratory viruses tend to increase. We expected that there would be a more clear and consistent trend when looking at respiratory viruses and AQI since AQI tends to affect those that have breathing issues leading to more respiratory illnesses. However, something to note is that there are other factors that lead to more cases of respiratory illnesses such as how it is spread and if there is a large outbreak in a region. Since respiratory viruses are very contagious, this could also be a reason why there are peaks during certain months but without a proxy for spread data it is difficult to pinpoint that factor. 

@@ -31,7 +31,8 @@ import pandas as pd
 import altair as alt
 import numpy as np
 import os
-import os
+import vl_convert as vlc
+from IPython.display import Image, display
 
 BASE_DIR = os.getcwd()
 aqi_all = pd.read_csv(os.path.join(BASE_DIR, 'data', 'derived-data', 'aqi_all.csv'))
@@ -69,7 +70,11 @@ scatter = alt.Chart(cook_daily_temp).mark_circle(opacity=0.3).encode(
     title="Cook County: Daily AQI vs Temperature"
 )
 
-scatter
+def display_to_pdf(altchart, scale=2):
+    png_bytes = vlc.vegalite_to_png(altchart.to_dict(), scale=scale)
+    display(Image(png_bytes))
+
+display_to_pdf(scatter)
 ```
 
 Static plot 1
@@ -173,7 +178,7 @@ aqi_virus_chart = alt.layer(title_chart, virus_line, aqi_line, legend_data).reso
     height=380,
 )
 
-aqi_virus_chart
+display_to_pdf(aqi_virus_chart)
 
 
 ```
